@@ -1,3 +1,6 @@
+# Ignore Python virtual environment
+FromBitToQubit_env/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
