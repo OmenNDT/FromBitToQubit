@@ -25,6 +25,12 @@ ENTANGLEMENT_TOLERANCE = 1e-6
 # Circuits with more gates than this are returned without per-gate steps
 MAX_STEPS = 200
 
+# Number of repetitions used for measurement statistics
+DEFAULT_SHOTS = 1024
+
+_SKIPPED = {'barrier', 'delay'}
+_UNSUPPORTED = {'if_else', 'while_loop', 'for_loop', 'switch_case'}
+
 _PAULIS = (Pauli('X'), Pauli('Y'), Pauli('Z'))
 
 EXAMPLES = {
@@ -64,6 +70,13 @@ circ.x(1)
 circ.h(1)
 circ.h(2)
 circ.s(2)''',
+
+    'measure_bell': '''# Measure a Bell pair: measuring q0 also collapses q1
+circ = QuantumCircuit(2, 2)
+circ.h(0)
+circ.cx(0, 1)
+circ.measure(0, 0)
+circ.measure(1, 1)''',
 
     'quantum_fourier_transform': '''# QFT on 3 qubits
 circ = QuantumCircuit(3)
@@ -164,47 +177,88 @@ def _param_value(param):
         return str(param)
 
 
-def analyze_steps(circuit, initial_state):
+def _simulate(circuit, rng, record):
     """
-    State after each gate, starting with the initial state.
+    Apply the circuit one instruction at a time from |0...0>.
 
-    Barriers do not change the state and are skipped. Returns None for circuits
-    larger than MAX_STEPS to keep the response size bounded.
+    Measurements sample one outcome and collapse the state (the "one run of the
+    experiment" view); resets are applied exactly. Barriers and delays do not
+    change the state and are skipped. Returns (final_state, steps, clbits),
+    where steps is None unless `record` is true.
     """
-    if circuit.size() > MAX_STEPS:
-        return None
+    state = Statevector.from_int(0, 2**circuit.num_qubits)
+    clbits = [None] * circuit.num_clbits
+    steps = [{'gate': None, 'clbits': list(clbits), **analyze_state(state)}] if record else None
 
-    state = initial_state
-    steps = [{'gate': None, **analyze_state(state)}]
     for instruction in circuit.data:
         operation = instruction.operation
-        if operation.name == 'barrier':
+        name = operation.name
+        if name in _SKIPPED:
             continue
+        if name in _UNSUPPORTED or getattr(operation, 'condition', None) is not None:
+            raise ValueError(f"'{name}' with classical control is not supported yet")
 
         qubits = [circuit.find_bit(q).index for q in instruction.qubits]
-        state = state.evolve(operation, qargs=qubits)
-        steps.append({
-            'gate': {
-                'name': operation.name,
-                'qubits': qubits,
-                'params': [_param_value(p) for p in operation.params],
-            },
-            **analyze_state(state),
-        })
-    return steps
+        gate = {
+            'name': name,
+            'qubits': qubits,
+            'params': [_param_value(p) for p in operation.params],
+        }
+
+        if name == 'measure':
+            state.seed(rng)
+            outcome, state = state.measure(qubits)
+            clbit = circuit.find_bit(instruction.clbits[0]).index
+            clbits[clbit] = int(outcome)
+            gate.update({'clbits': [clbit], 'outcome': int(outcome)})
+        elif name == 'reset':
+            state = state.reset(qubits)
+        else:
+            state = state.evolve(operation, qargs=qubits)
+
+        if record:
+            steps.append({'gate': gate, 'clbits': list(clbits), **analyze_state(state)})
+
+    return state, steps, clbits
 
 
-def analyze_circuit(circuit):
-    """Simulate `circuit` from |0...0> and return the full analysis dictionary."""
-    num_qubits = circuit.num_qubits
-    initial_state = Statevector.from_int(0, 2**num_qubits)
-    state = initial_state.evolve(circuit)
+def sample_counts(circuit, shots, seed):
+    """Measurement statistics over many shots, via Qiskit Aer (None without measurements or Aer)."""
+    if not any(i.operation.name == 'measure' for i in circuit.data):
+        return None
+    try:
+        from qiskit import transpile
+        from qiskit_aer import AerSimulator
+    except ImportError:
+        return None
+
+    simulator = AerSimulator()
+    job = simulator.run(transpile(circuit, simulator), shots=shots, seed_simulator=seed)
+    return dict(job.result().get_counts())
+
+
+def analyze_circuit(circuit, seed=None, shots=DEFAULT_SHOTS):
+    """
+    Simulate `circuit` from |0...0> and return the full analysis dictionary.
+
+    The top-level state is the state at the end of one sampled run; with no
+    measurements it is simply the exact final state. `seed` makes the sampled
+    measurement outcomes reproducible.
+    """
+    seed = int(np.random.default_rng().integers(2**31)) if seed is None else int(seed)
+    rng = np.random.default_rng(seed)
+
+    state, steps, clbits = _simulate(circuit, rng, record=circuit.size() <= MAX_STEPS)
 
     return {
         'success': True,
-        'num_qubits': num_qubits,
+        'num_qubits': circuit.num_qubits,
         **analyze_state(state),
-        'steps': analyze_steps(circuit, initial_state),
+        'clbits': clbits,
+        'steps': steps,
+        'counts': sample_counts(circuit, shots, seed),
+        'shots': shots,
+        'seed': seed,
         'circuit_depth': circuit.depth(),
         'circuit_size': circuit.size(),
     }

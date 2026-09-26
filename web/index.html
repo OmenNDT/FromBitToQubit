@@ -126,6 +126,21 @@
     color: var(--muted); pointer-events: none; text-align: center; padding: 16px;
   }
 
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .tabs button { border: 0; background: transparent; padding: 7px; border-radius: 7px; color: var(--muted); }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: #0b0e14; }
+  #lesson-intro { margin: 10px 0; color: var(--text); }
+  #lesson-panel .row button { flex: 1; padding: 7px 10px; }
+  #lesson-panel .row button:disabled { opacity: .4; cursor: default; }
+  #caption {
+    font-size: 13px; line-height: 1.55; color: var(--text);
+    border-left: 3px solid var(--accent); padding: 2px 0 2px 10px;
+  }
+  #caption[hidden], #reroll[hidden], #clbits[hidden] { display: none; }
+  #timeline .row { flex-wrap: wrap; }
+  #clbits { margin-left: auto; font: 13px var(--mono); color: var(--muted); }
+  #clbits b { color: var(--text); font-weight: 500; }
+
   @media (max-width: 800px) {
     body { grid-template-columns: 1fr; grid-template-rows: 70vh auto; overflow: auto; height: auto; }
     main { order: -1; height: 70vh; }
@@ -145,10 +160,26 @@
 <aside>
   <h1>Qubit Visualizer 3D<small>Từ Bit đến Qubit · Qiskit + Three.js</small></h1>
 
+  <div class="tabs" role="tablist">
+    <button id="tab-lessons" role="tab" aria-selected="true">Bài học</button>
+    <button id="tab-free" role="tab" aria-selected="false">Tự do</button>
+  </div>
+
+  <section id="lesson-panel" hidden>
+    <select id="lesson-select" aria-label="Chọn bài học"></select>
+    <p id="lesson-intro"></p>
+    <div class="row">
+      <button id="lesson-prev">← Bài trước</button>
+      <button id="lesson-next">Bài sau →</button>
+    </div>
+  </section>
+
   <section>
     <h2>Mạch lượng tử</h2>
-    <select id="examples" aria-label="Chọn ví dụ"><option value="">— Chọn ví dụ —</option></select>
-    <div style="height:8px"></div>
+    <div id="examples-wrap">
+      <select id="examples" aria-label="Chọn ví dụ"><option value="">— Chọn ví dụ —</option></select>
+      <div style="height:8px"></div>
+    </div>
     <textarea id="code" spellcheck="false" aria-label="Qiskit code">circ = QuantumCircuit(2)
 circ.h(0)
 circ.cx(0, 1)</textarea>
@@ -181,6 +212,12 @@ circ.cx(0, 1)</textarea>
     <div class="hint" style="margin-top:6px">Thứ tự bit kiểu Qiskit: q<sub>n−1</sub> … q<sub>0</sub>. Màu thanh thể hiện pha của biên độ.</div>
   </section>
 
+  <section id="counts-section" hidden>
+    <h2 id="counts-title">Thống kê đo</h2>
+    <div class="bars" id="counts"></div>
+    <div class="hint" style="margin-top:6px">Chạy lại mạch nhiều lần bằng Qiskit Aer. Thứ tự bit: c<sub>n−1</sub> … c<sub>0</sub>.</div>
+  </section>
+
   <section>
     <h2>Cách đọc</h2>
     <div class="legend">
@@ -189,6 +226,7 @@ circ.cx(0, 1)</textarea>
       <div>Mũi tên ngắn lại = qubit không còn trạng thái riêng, tức đang rối với qubit khác.</div>
       <div><span class="sw" style="background:var(--entangled)"></span>Rối lượng tử giữa hai qubit (concurrence &gt; 0)</div>
       <div><span class="sw" style="background:repeating-linear-gradient(90deg,var(--correlated) 0 5px,transparent 5px 9px)"></span>Chỉ tương quan, không rối từng cặp (ví dụ GHZ)</div>
+      <div>Quả cầu loé trắng = phép đo. Mũi tên nhảy ngay về một cực (sụp đổ), không quay dần như khi qua cổng.</div>
     </div>
   </section>
 </aside>
@@ -202,7 +240,10 @@ circ.cx(0, 1)</textarea>
       <button id="play" aria-label="Chạy">▶</button>
       <button id="next" aria-label="Bước sau">⏭</button>
       <span id="step-label"></span>
+      <span id="clbits" hidden></span>
+      <button id="reroll" hidden>🎲 Đo lại</button>
     </div>
+    <div id="caption" hidden></div>
     <input id="slider" type="range" min="0" value="0" aria-label="Bước">
     <div id="chips"></div>
   </div>
@@ -227,6 +268,7 @@ const COLORS = {
   correlated: color('--correlated'),
   grid: new THREE.Color('#3a4560'),
   active: color('--accent'),
+  flash: new THREE.Color(0xffffff),
 };
 const SHELL_IDLE = new THREE.Color(0x8fa7d9);
 
@@ -343,13 +385,19 @@ class BlochSphere {
     this.targetLen = 1;
     this.targetGlow = 0;
     this.active = false;
+    this.flashLevel = 0;
     this.setArrow(this.dir.clone().multiplyScalar(this.len));
   }
 
-  update(q, prob1) {
+  update(q, prob1, snap = false) {
     const target = blochToWorld(q.bloch_vector);
     this.targetLen = target.length();
     if (this.targetLen > 1e-6) this.targetDir = target.normalize();
+    // Measurement collapse is instantaneous, not a rotation
+    if (snap) {
+      this.dir.copy(this.targetDir);
+      this.len = this.targetLen;
+    }
     this.targetGlow = q.entangled ? Math.min(1, q.entropy) : 0;
     const t = THREE.MathUtils.clamp((1 - q.bloch_vector[2]) / 2, 0, 1);
     this.arrowMat.color.copy(COLORS.zero).lerp(COLORS.one, t);
@@ -369,6 +417,10 @@ class BlochSphere {
     this.head.position.y = len - headLen / 2;
     this.arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize());
     this.tip.position.copy(v);
+  }
+
+  flash() {
+    this.flashLevel = 1;
   }
 
   setActive(active) {
@@ -397,6 +449,11 @@ class BlochSphere {
     const sm = this.shell.material;
     sm.color.lerp(this.active ? COLORS.active : SHELL_IDLE, k);
     sm.opacity += ((this.active ? 0.2 : 0.07) - sm.opacity) * k;
+    if (this.flashLevel > 0.01) {
+      this.flashLevel *= Math.exp(-dt * 3);
+      sm.color.lerp(COLORS.flash, this.flashLevel);
+      sm.opacity = Math.max(sm.opacity, 0.55 * this.flashLevel);
+    }
     const m = this.core.material;
     m.opacity += (this.targetGlow * (0.45 + 0.15 * Math.sin(time * 3)) - m.opacity) * k;
     this.core.scale.setScalar(1 + this.targetGlow * (1.2 + 0.2 * Math.sin(time * 3)));
@@ -531,9 +588,12 @@ function renderPanel(r) {
 
 function show(state, numQubits, gate = null) {
   if (spheres.length !== numQubits) rebuildSpheres(numQubits);
+  const measured = gate?.name === 'measure';
   state.qubits.forEach((q, i) => {
-    spheres[i].update(q, state.marginal_probabilities[i].prob_1);
-    spheres[i].setActive(!!gate && gate.qubits.includes(i));
+    const touched = !!gate && gate.qubits.includes(i);
+    spheres[i].update(q, state.marginal_probabilities[i].prob_1, measured);
+    spheres[i].setActive(touched);
+    if (measured && touched) spheres[i].flash();
   });
   rebuildLinks(state.pairs);
   renderPanel({ ...state, num_qubits: numQubits });
@@ -562,6 +622,7 @@ function fmtAngle(v) {
 
 function gateLabel(g) {
   if (!g) return '|' + '0'.repeat(result.num_qubits) + '⟩';
+  if (g.name === 'measure') return `M q${g.qubits[0]}→c${g.clbits[0]} = ${g.outcome}`;
   const name = g.name.toUpperCase() + (g.params.length ? `(${g.params.map(fmtAngle).join(', ')})` : '');
   const qs = g.qubits.map(q => `q${q}`);
   if (CONTROLLED.has(g.name) && qs.length === 2) return `${name} ${qs[0]}→${qs[1]}`;
@@ -575,10 +636,20 @@ function goTo(i) {
   const s = steps[step];
   show(s, result.num_qubits, s.gate);
 
+  const note = notes?.[step];
+  $('caption').hidden = !note;
+  $('caption').textContent = note || '';
+
+  const bits = s.clbits || [];
+  $('clbits').hidden = bits.length === 0;
+  $('clbits').innerHTML = 'c = ' + [...bits].reverse().map(b => (b === null ? '·' : `<b>${b}</b>`)).join(' ');
+
   $('slider').value = step;
   $('step-label').textContent = step === 0
     ? `Bước 0/${steps.length - 1} · trạng thái ban đầu`
-    : `Bước ${step}/${steps.length - 1} · ${gateLabel(s.gate)}`;
+    : `Bước ${step}/${steps.length - 1} · ${s.gate.name === 'measure'
+      ? `Đo q${s.gate.qubits[0]} → c${s.gate.clbits[0]} = ${s.gate.outcome}`
+      : gateLabel(s.gate)}`;
   [...$('chips').children].forEach((c, j) => {
     c.classList.toggle('active', j === step);
     c.classList.toggle('done', j < step);
@@ -608,9 +679,25 @@ function play() {
   }, 1100);
 }
 
-function load(data) {
+function renderCounts(data) {
+  const section = $('counts-section');
+  section.hidden = !data.counts;
+  $('reroll').hidden = !data.counts || !data.steps;
+  if (!data.counts) return;
+  $('counts-title').textContent = `Thống kê đo (${data.shots} lần)`;
+  const entries = Object.entries(data.counts).sort(([a], [b]) => a.localeCompare(b));
+  $('counts').innerHTML = entries.map(([bits, n]) => {
+    const p = n / data.shots;
+    return `<div class="bar"><code>${bits}</code>
+      <div class="track"><div class="fill" style="width:${p * 100}%;background:var(--accent)"></div></div>
+      <span class="p">${n}</span></div>`;
+  }).join('');
+}
+
+function load(data, startAt = 0) {
   stop();
   result = data;
+  renderCounts(data);
   if (!data.steps) {
     $('timeline').hidden = true;
     show(data, data.num_qubits);
@@ -630,7 +717,7 @@ function load(data) {
   if (reduceMotion || data.steps.length < 2) {
     goTo(data.steps.length - 1);
   } else {
-    goTo(0);
+    goTo(startAt);
     play();
   }
 }
@@ -647,7 +734,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ---------- Backend ----------
-async function simulate() {
+async function simulate({ fromMeasurement = false } = {}) {
   const btn = $('run');
   btn.disabled = true;
   setStatus('Đang mô phỏng…');
@@ -660,7 +747,13 @@ async function simulate() {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Mô phỏng thất bại');
     if (!data.qubits) throw new Error('Backend chưa trả vector Bloch. Hãy chạy quantum_backend.py (bản dùng Qiskit).');
-    load(data);
+    // Lesson notes only apply while the lesson's own code is running unchanged
+    const lesson = mode === 'lessons' ? lessons[lessonIdx] : null;
+    notes = lesson && $('code').value.trim() === lesson.code.trim()
+      && data.steps && lesson.notes.length === data.steps.length ? lesson.notes : null;
+
+    const firstMeasure = data.steps ? data.steps.findIndex(s => s.gate?.name === 'measure') : -1;
+    load(data, fromMeasurement && firstMeasure > 0 ? firstMeasure - 1 : 0);
     setStatus(`${data.num_qubits} qubit · độ sâu ${data.circuit_depth} · ${data.circuit_size} cổng`
       + (data.steps ? '' : ' · mạch quá lớn, chỉ hiện kết quả cuối'), 'ok');
   } catch (err) {
@@ -688,7 +781,58 @@ async function loadExamples() {
   }
 }
 
-$('run').addEventListener('click', simulate);
+// ---------- Lessons ----------
+let lessons = [];
+let lessonIdx = 0;
+let notes = null;
+let mode = 'free';
+
+const pref = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+};
+
+async function loadLessons() {
+  try {
+    const res = await fetch(`${API}/lessons.json`);
+    lessons = (await res.json()).lessons;
+  } catch {
+    lessons = [];
+  }
+  $('lesson-select').innerHTML = lessons.map((l, i) => `<option value="${i}">${l.title}</option>`).join('');
+}
+
+function openLesson(i) {
+  lessonIdx = Math.max(0, Math.min(i, lessons.length - 1));
+  const lesson = lessons[lessonIdx];
+  $('lesson-select').value = lessonIdx;
+  $('lesson-intro').textContent = lesson.intro;
+  $('lesson-prev').disabled = lessonIdx === 0;
+  $('lesson-next').disabled = lessonIdx === lessons.length - 1;
+  $('code').value = lesson.code;
+  pref.set('fbq-lesson', lessonIdx);
+  simulate();
+}
+
+function setMode(next) {
+  mode = next === 'lessons' && lessons.length ? 'lessons' : 'free';
+  pref.set('fbq-mode', mode);
+  $('tab-lessons').setAttribute('aria-selected', mode === 'lessons');
+  $('tab-free').setAttribute('aria-selected', mode === 'free');
+  $('lesson-panel').hidden = mode !== 'lessons';
+  $('examples-wrap').hidden = mode === 'lessons';
+  if (mode === 'lessons') openLesson(lessonIdx);
+  else simulate();
+}
+
+$('tab-lessons').addEventListener('click', () => mode !== 'lessons' && setMode('lessons'));
+$('tab-free').addEventListener('click', () => mode !== 'free' && setMode('free'));
+$('lesson-select').addEventListener('change', e => openLesson(+e.target.value));
+$('lesson-prev').addEventListener('click', () => openLesson(lessonIdx - 1));
+$('lesson-next').addEventListener('click', () => openLesson(lessonIdx + 1));
+$('reroll').addEventListener('click', () => simulate({ fromMeasurement: true }));
+
+$('run').addEventListener('click', () => simulate());
 $('code').addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); simulate(); }
 });
@@ -712,7 +856,11 @@ renderer.setAnimationLoop(() => {
   labelRenderer.render(scene, camera);
 });
 
-if (await loadExamples()) simulate();
+if (await loadExamples()) {
+  await loadLessons();
+  lessonIdx = Math.min(+pref.get('fbq-lesson') || 0, Math.max(lessons.length - 1, 0));
+  setMode(pref.get('fbq-mode') || 'lessons');
+}
 </script>
 </body>
 </html>

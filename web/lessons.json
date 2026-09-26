@@ -1,0 +1,106 @@
+{
+  "lessons": [
+    {
+      "id": "classical-bit",
+      "title": "1. Bit cổ điển",
+      "intro": "Máy tính cổ điển lưu thông tin bằng bit, mỗi bit là 0 hoặc 1. Trên Bloch sphere, 0 nằm ở đỉnh (|0⟩) và 1 nằm ở đáy (|1⟩). Cổng X của máy tính lượng tử chính là cổng NOT quen thuộc.",
+      "code": "circ = QuantumCircuit(1)\ncirc.x(0)\ncirc.x(0)",
+      "notes": [
+        "Qubit bắt đầu ở |0⟩, mũi tên chỉ lên đỉnh. Lúc này nó giống hệt bit 0.",
+        "Cổng X lật |0⟩ thành |1⟩: mũi tên quay nửa vòng xuống đáy. Đây là cổng NOT.",
+        "X lần nữa đưa qubit về |0⟩. Đến đây qubit chưa làm được gì hơn một bit thường. Bài sau sẽ khác."
+      ]
+    },
+    {
+      "id": "superposition",
+      "title": "2. Chồng chất và giao thoa",
+      "intro": "Qubit không bị giới hạn ở hai cực: mũi tên có thể chỉ tới bất kỳ điểm nào trên mặt cầu. Cổng Hadamard (H) đưa qubit lên xích đạo, nơi đo ra 0 hay 1 đều có xác suất 50%.",
+      "code": "circ = QuantumCircuit(1)\ncirc.h(0)\ncirc.h(0)",
+      "notes": [
+        "Qubit bắt đầu ở |0⟩.",
+        "H đưa qubit lên xích đạo: |+⟩ = (|0⟩ + |1⟩)/√2. Nếu đo lúc này, kết quả là 0 hoặc 1 với xác suất mỗi bên 50%.",
+        "H lần nữa đưa qubit về |0⟩ một cách chắc chắn, không phải 50/50. Hai 'nhánh' dẫn tới |1⟩ triệt tiêu nhau. Đó là giao thoa, điều một đồng xu tung ngẫu nhiên không làm được."
+      ]
+    },
+    {
+      "id": "phase",
+      "title": "3. Pha: thông tin vô hình",
+      "intro": "Hai trạng thái có thể cho cùng xác suất đo nhưng vẫn khác nhau ở pha, tức hướng của mũi tên quanh trục thẳng đứng. Pha không thấy được nếu đo trực tiếp, nhưng quyết định kết quả sau những cổng tiếp theo.",
+      "code": "circ = QuantumCircuit(1)\ncirc.h(0)\ncirc.z(0)\ncirc.h(0)",
+      "notes": [
+        "Qubit bắt đầu ở |0⟩.",
+        "H đưa qubit tới |+⟩, mũi tên chỉ sang phải. P(1) = 0.5.",
+        "Z đổi dấu thành phần |1⟩: |+⟩ trở thành |−⟩. Mũi tên quay sang trái, nhưng xác suất đo vẫn 50/50. Chỉ có màu thanh |1⟩ trong bảng xác suất đổi, vì pha của nó đã đổi.",
+        "H lần nữa: |−⟩ trở thành |1⟩. So với bài 2, chỉ thêm một cổng Z mà kết quả cuối ngược hẳn. Pha 'vô hình' đã biến thành kết quả đo."
+      ]
+    },
+    {
+      "id": "entanglement",
+      "title": "4. Rối lượng tử",
+      "intro": "Hai qubit có thể gắn với nhau đến mức mỗi qubit riêng lẻ không còn trạng thái của riêng mình. Công thức chuẩn để tạo rối là cổng H rồi đến cổng CNOT.",
+      "code": "circ = QuantumCircuit(2)\ncirc.h(0)\ncirc.cx(0, 1)",
+      "notes": [
+        "Hai qubit bắt đầu ở |00⟩.",
+        "H trên q0: q0 lên xích đạo, q1 vẫn ở |0⟩. Chưa có rối: mỗi qubit vẫn có mũi tên dài đủ. Chồng chất chưa phải là rối.",
+        "CNOT lật q1 nếu q0 là 1. Kết quả là (|00⟩ + |11⟩)/√2, trạng thái Bell. Cả hai mũi tên co về tâm: từng qubit không còn trạng thái xác định, thông tin nằm hết ở mối liên hệ giữa hai qubit (dây vàng, concurrence = 1)."
+      ]
+    },
+    {
+      "id": "measurement",
+      "title": "5. Đo lường và sụp đổ",
+      "intro": "Đo một qubit cho ra 0 hoặc 1 một cách ngẫu nhiên, và trạng thái 'sụp đổ' về kết quả vừa đo. Với qubit đang rối, phép đo một qubit ảnh hưởng tới cả qubit kia.",
+      "code": "circ = QuantumCircuit(2, 2)\ncirc.h(0)\ncirc.cx(0, 1)\ncirc.measure(0, 0)\ncirc.measure(1, 1)",
+      "notes": [
+        "Hai qubit bắt đầu ở |00⟩. Thanh c bên dưới là các bit cổ điển, chưa đo nên còn trống.",
+        "H trên q0.",
+        "CNOT tạo cặp Bell: hai qubit rối cực đại.",
+        "Đo q0: ra 0 hoặc 1 ngẫu nhiên. Trạng thái sụp đổ, và q1 cũng nhảy về cùng cực dù không bị chạm vào. Dây rối biến mất: phép đo đã 'tiêu thụ' sự rối.",
+        "Đo q1: kết quả luôn trùng q0. Bấm 🎲 Đo lại vài lần: kết quả thay đổi nhưng hai bit luôn giống nhau. Bảng thống kê 1024 lần chỉ có 00 và 11."
+      ]
+    },
+    {
+      "id": "ghz",
+      "title": "6. GHZ: rối của cả nhóm",
+      "intro": "Rối không chỉ xảy ra giữa hai qubit. Trạng thái GHZ gắn ba qubit thành một khối, và có một tính chất bất ngờ: không cặp nào trong đó rối với nhau.",
+      "code": "circ = QuantumCircuit(3)\ncirc.h(0)\ncirc.cx(0, 1)\ncirc.cx(0, 2)",
+      "notes": [
+        "Ba qubit bắt đầu ở |000⟩.",
+        "H trên q0.",
+        "CX q0→q1: q0 và q1 thành cặp Bell (dây vàng), q2 vẫn đứng ngoài.",
+        "CX q0→q2: cả ba thành (|000⟩ + |111⟩)/√2. Nhưng xét từng cặp thì concurrence = 0, chỉ còn đường nét đứt (tương quan cổ điển). Rối nằm ở cả nhóm, không nằm ở cặp nào: bỏ qua một qubit là mất rối."
+      ]
+    },
+    {
+      "id": "deutsch",
+      "title": "7. Thuật toán Deutsch",
+      "intro": "Cho một hàm f nhận 0 hoặc 1 và trả về 0 hoặc 1. Hỏi f là hằng (f(0) = f(1)) hay cân bằng (f(0) ≠ f(1))? Máy cổ điển phải gọi f hai lần. Máy lượng tử chỉ cần gọi một lần. Ở đây f(x) = x, được cài bằng một cổng CNOT.",
+      "code": "circ = QuantumCircuit(2, 1)\ncirc.x(1)\ncirc.h(0)\ncirc.h(1)\ncirc.cx(0, 1)\ncirc.h(0)\ncirc.measure(0, 0)",
+      "notes": [
+        "Hai qubit bắt đầu ở |00⟩. q0 là đầu vào x, q1 là qubit đích.",
+        "X đưa q1 về |1⟩.",
+        "H trên q0 tạo |+⟩: q0 'hỏi' cả x = 0 lẫn x = 1 cùng lúc.",
+        "H trên q1 tạo |−⟩. Qubit đích ở trạng thái này là chìa khoá của thuật toán.",
+        "Gọi f đúng một lần (CNOT). Điều bất ngờ: q1 không đổi, còn q0 lật từ |+⟩ sang |−⟩. Hiện tượng này gọi là phase kickback: câu trả lời về f đã nằm trong pha của q0.",
+        "H trên q0 biến pha thành bit: |−⟩ trở thành |1⟩.",
+        "Đo q0 ra 1, nghĩa là f cân bằng (nếu f hằng thì ra 0). Thử xoá dòng circ.cx(0, 1), tức f luôn bằng 0, rồi chạy lại: kết quả sẽ là 0."
+      ]
+    },
+    {
+      "id": "teleportation",
+      "title": "8. Dịch chuyển lượng tử",
+      "intro": "Alice muốn gửi trạng thái của q0 cho Bob mà không mang qubit đi. Hai người chia nhau một cặp rối (q1 thuộc Alice, q2 thuộc Bob). Để chạy từng bước được, phần 'đo rồi gửi bit' được thay bằng cổng điều khiển; hai cách cho cùng kết quả.",
+      "code": "circ = QuantumCircuit(3)\ncirc.ry(np.pi/3, 0)\ncirc.rz(np.pi/2, 0)\ncirc.h(1)\ncirc.cx(1, 2)\ncirc.cx(0, 1)\ncirc.h(0)\ncirc.cx(1, 2)\ncirc.cz(0, 2)",
+      "notes": [
+        "Ba qubit bắt đầu ở |000⟩.",
+        "RY nghiêng q0 ra khỏi đỉnh cầu: đây là bước chuẩn bị trạng thái 'bí mật'.",
+        "RZ quay q0 quanh trục thẳng đứng. Hãy nhớ hướng mũi tên q0 lúc này (0, 0.87, 0.5): đó là thứ cần gửi đi.",
+        "H trên q1 là bước đầu tạo cặp rối giữa Alice và Bob.",
+        "CX q1→q2: q1 và q2 rối cực đại. Đây là 'kênh' lượng tử dùng chung.",
+        "CX q0→q1: Alice nối trạng thái bí mật vào cặp rối. Cả ba mũi tên co lại, thông tin của q0 giờ trải khắp hệ.",
+        "H trên q0 là thao tác cuối của Alice. Trong giao thức thật, Alice sẽ đo q0 và q1 rồi gửi 2 bit cổ điển cho Bob.",
+        "CX q1→q2: Bob sửa lỗi lật bit dựa theo q1.",
+        "CZ q0→q2: Bob sửa pha. Mũi tên q2 giờ trùng đúng hướng ban đầu của q0! Còn q0 và q1 chỉ còn |+⟩, không giữ lại gì của trạng thái cũ. Trạng thái được chuyển đi chứ không bị sao chép (định lý no-cloning)."
+      ]
+    }
+  ]
+}

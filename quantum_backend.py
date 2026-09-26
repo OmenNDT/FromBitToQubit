@@ -7,7 +7,7 @@ from quantum_analysis import EXAMPLES, analyze_circuit, load_circuit
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=WEB_DIR, static_url_path='')
 CORS(app)  # Enable CORS for Unity communication
 
 @app.route('/simulate', methods=['POST'])
@@ -42,7 +42,7 @@ def simulate_quantum_circuit():
             }), 400
         
         circuit = load_circuit(data['qiskit_code'])
-        return jsonify(analyze_circuit(circuit))
+        return jsonify(analyze_circuit(circuit, seed=data.get('seed')))
         
     except Exception as e:
         return jsonify({

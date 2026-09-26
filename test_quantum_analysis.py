@@ -4,7 +4,9 @@ Physics checks for quantum_analysis (no server needed).
 Run with: python -m pytest test_quantum_analysis.py
 """
 
+import json
 import math
+import os
 
 import pytest
 from qiskit import QuantumCircuit
@@ -148,3 +150,68 @@ def test_steps_omitted_for_large_circuits():
         circuit.x(0)
     result = analyze_circuit(circuit)
     assert result['steps'] is None
+
+
+def test_measuring_one_bell_qubit_collapses_both():
+    result = analyze(EXAMPLES['measure_bell'])
+    steps = result['steps']
+    assert [s['gate'] and s['gate']['name'] for s in steps] == [None, 'h', 'cx', 'measure', 'measure']
+
+    first = steps[3]
+    outcome = first['gate']['outcome']
+    assert first['gate']['qubits'] == [0] and first['gate']['clbits'] == [0]
+    assert first['clbits'] == [outcome, None]
+    # Measuring q0 alone puts q1 into the same definite state: no entanglement left
+    z = 1 - 2 * outcome
+    for qubit in first['qubits']:
+        assert_bloch(qubit, [0, 0, z])
+        assert not qubit['entangled']
+    # The second measurement must agree with the first
+    assert steps[4]['gate']['outcome'] == outcome
+    assert result['clbits'] == [outcome, outcome]
+
+
+def test_measurement_counts_come_from_aer():
+    result = analyze(EXAMPLES['measure_bell'])
+    counts = result['counts']
+    assert set(counts) <= {'00', '11'}
+    assert sum(counts.values()) == result['shots']
+    assert 0.4 < counts.get('00', 0) / result['shots'] < 0.6
+
+
+def test_seed_makes_measurement_reproducible():
+    code = "circ = QuantumCircuit(5, 5)\ncirc.h([0, 1, 2, 3, 4])\ncirc.measure([0, 1, 2, 3, 4], [0, 1, 2, 3, 4])"
+    outcomes = {tuple(analyze_circuit(load_circuit(code), seed=7)['clbits']) for _ in range(3)}
+    assert len(outcomes) == 1
+    assert analyze_circuit(load_circuit(code), seed=7)['counts'] == analyze_circuit(load_circuit(code), seed=7)['counts']
+
+
+def test_no_counts_without_measurement():
+    assert analyze("circ = QuantumCircuit(1)\ncirc.h(0)")['counts'] is None
+
+
+def test_reset_returns_qubit_to_zero():
+    result = analyze("circ = QuantumCircuit(1)\ncirc.x(0)\ncirc.reset(0)")
+    assert_bloch(result['qubits'][0], [0, 0, 1])
+
+
+LESSONS = json.load(open(os.path.join(os.path.dirname(__file__), 'web', 'lessons.json'), encoding='utf-8'))['lessons']
+
+
+@pytest.mark.parametrize('lesson', LESSONS, ids=lambda l: l['id'])
+def test_lesson_has_one_note_per_step(lesson):
+    result = analyze(lesson['code'])
+    assert len(lesson['notes']) == len(result['steps'])
+
+
+def test_teleportation_lesson_moves_the_state_to_q2():
+    lesson = next(l for l in LESSONS if l['id'] == 'teleportation')
+    steps = analyze(lesson['code'])['steps']
+    secret = steps[2]['qubits'][0]['bloch_vector']
+    assert steps[-1]['qubits'][2]['bloch_vector'] == pytest.approx(secret, abs=1e-9)
+
+
+def test_deutsch_lesson_detects_balanced_function():
+    lesson = next(l for l in LESSONS if l['id'] == 'deutsch')
+    assert analyze(lesson['code'])['clbits'] == [1]
+    assert analyze(lesson['code'].replace('circ.cx(0, 1)\n', ''))['clbits'] == [0]

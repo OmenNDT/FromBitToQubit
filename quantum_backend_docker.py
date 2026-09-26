@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=WEB_DIR, static_url_path='')
 CORS(app)  # Enable CORS for Unity communication
 
 # Configuration from environment variables
@@ -31,10 +31,10 @@ except ImportError:
     QISKIT_AVAILABLE = False
     logger.warning("Qiskit not available - using simplified simulation")
 
-def simulate_with_qiskit(qiskit_code):
+def simulate_with_qiskit(qiskit_code, seed=None):
     """Full Qiskit simulation"""
     try:
-        result = analyze_circuit(load_circuit(qiskit_code))
+        result = analyze_circuit(load_circuit(qiskit_code), seed=seed)
         result['simulation_type'] = 'qiskit'
         return result
 
@@ -147,7 +147,7 @@ def simulate_quantum_circuit():
         logger.info(f"Simulating circuit: {qiskit_code[:100]}...")
         
         if QISKIT_AVAILABLE:
-            result = simulate_with_qiskit(qiskit_code)
+            result = simulate_with_qiskit(qiskit_code, seed=data.get('seed'))
         else:
             result = simulate_simple_circuit(qiskit_code)
         
