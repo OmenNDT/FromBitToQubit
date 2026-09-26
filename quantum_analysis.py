@@ -22,6 +22,9 @@ from qiskit.quantum_info import (
 # Numerical tolerance for deciding that a reduced state is mixed (i.e. entangled)
 ENTANGLEMENT_TOLERANCE = 1e-6
 
+# Circuits with more gates than this are returned without per-gate steps
+MAX_STEPS = 200
+
 _PAULIS = (Pauli('X'), Pauli('Y'), Pauli('Z'))
 
 EXAMPLES = {
@@ -133,16 +136,11 @@ def analyze_pairs(state):
     return pairs
 
 
-def analyze_circuit(circuit):
-    """Simulate `circuit` from |0...0> and return the full analysis dictionary."""
-    num_qubits = circuit.num_qubits
-    state = Statevector.from_int(0, 2**num_qubits).evolve(circuit)
-
-    probabilities = [_clean(p) for p in state.probabilities()]
-
-    # Kept for backwards compatibility with the Unity client
+def analyze_state(state):
+    """Statevector, probabilities and entanglement analysis of a single state."""
+    # marginal_probabilities is kept for backwards compatibility with the Unity client
     marginal_probabilities = []
-    for q in range(num_qubits):
+    for q in range(state.num_qubits):
         prob_0, prob_1 = state.probabilities([q])
         marginal_probabilities.append({
             'qubit': q,
@@ -151,13 +149,62 @@ def analyze_circuit(circuit):
         })
 
     return {
-        'success': True,
         'statevector': [[_clean(a.real), _clean(a.imag)] for a in state.data],
-        'num_qubits': num_qubits,
-        'probabilities': probabilities,
+        'probabilities': [_clean(p) for p in state.probabilities()],
         'marginal_probabilities': marginal_probabilities,
         'qubits': analyze_qubits(state),
         'pairs': analyze_pairs(state),
+    }
+
+
+def _param_value(param):
+    try:
+        return float(param)
+    except (TypeError, ValueError):
+        return str(param)
+
+
+def analyze_steps(circuit, initial_state):
+    """
+    State after each gate, starting with the initial state.
+
+    Barriers do not change the state and are skipped. Returns None for circuits
+    larger than MAX_STEPS to keep the response size bounded.
+    """
+    if circuit.size() > MAX_STEPS:
+        return None
+
+    state = initial_state
+    steps = [{'gate': None, **analyze_state(state)}]
+    for instruction in circuit.data:
+        operation = instruction.operation
+        if operation.name == 'barrier':
+            continue
+
+        qubits = [circuit.find_bit(q).index for q in instruction.qubits]
+        state = state.evolve(operation, qargs=qubits)
+        steps.append({
+            'gate': {
+                'name': operation.name,
+                'qubits': qubits,
+                'params': [_param_value(p) for p in operation.params],
+            },
+            **analyze_state(state),
+        })
+    return steps
+
+
+def analyze_circuit(circuit):
+    """Simulate `circuit` from |0...0> and return the full analysis dictionary."""
+    num_qubits = circuit.num_qubits
+    initial_state = Statevector.from_int(0, 2**num_qubits)
+    state = initial_state.evolve(circuit)
+
+    return {
+        'success': True,
+        'num_qubits': num_qubits,
+        **analyze_state(state),
+        'steps': analyze_steps(circuit, initial_state),
         'circuit_depth': circuit.depth(),
         'circuit_size': circuit.size(),
     }
