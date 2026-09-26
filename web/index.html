@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qubit Visualizer 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #121722;
+    --panel-2: #1a2130;
+    --border: #263044;
+    --text: #e6eaf2;
+    --muted: #8a94a8;
+    --accent: #7aa2ff;
+    --zero: #5b9dff;
+    --one: #ff6b7d;
+    --entangled: #ffc857;
+    --correlated: #4fd1c5;
+    --error: #ff6b6b;
+    --ok: #5dd39e;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 Inter, system-ui, sans-serif;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    grid-template-rows: 100%;
+    overflow: hidden;
+  }
+  aside {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 20px 16px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin: 0; }
+  h1 small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+  h2 { font-size: 12px; font-weight: 600; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  select, textarea, button {
+    font: inherit;
+    color: var(--text);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  select { width: 100%; padding: 8px 10px; }
+  textarea {
+    width: 100%;
+    min-height: 170px;
+    padding: 10px 12px;
+    font: 13px/1.55 var(--mono);
+    resize: vertical;
+    tab-size: 4;
+  }
+  textarea:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  button {
+    padding: 9px 16px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0e14; flex: 1; }
+  button.primary:disabled { opacity: .6; cursor: progress; }
+  .hint { color: var(--muted); font-size: 12px; }
+  #status { font-size: 12px; min-height: 18px; }
+  #status.error { color: var(--error); white-space: pre-wrap; }
+  #status.ok { color: var(--ok); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { font-family: var(--mono); }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11px; font-weight: 500; }
+  .tag.ent { background: color-mix(in srgb, var(--entangled) 20%, transparent); color: var(--entangled); }
+  .tag.pure { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .tag.corr { background: color-mix(in srgb, var(--correlated) 18%, transparent); color: var(--correlated); }
+  .tag.none { background: var(--panel-2); color: var(--muted); }
+
+  .bars { display: flex; flex-direction: column; gap: 4px; }
+  .bar { display: grid; grid-template-columns: auto 1fr 52px; gap: 8px; align-items: center; font-size: 12px; }
+  .bar code { font-family: var(--mono); }
+  .bar .track { height: 10px; background: var(--panel-2); border-radius: 5px; overflow: hidden; }
+  .bar .fill { height: 100%; border-radius: 5px; }
+  .bar .p { font-family: var(--mono); text-align: right; color: var(--muted); }
+
+  .legend { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+  .legend span.sw { display: inline-block; width: 22px; height: 3px; vertical-align: middle; margin-right: 8px; border-radius: 2px; }
+
+  main { position: relative; min-width: 0; display: flex; flex-direction: column; }
+  #scene { position: relative; flex: 1; min-height: 0; }
+  #scene { overflow: hidden; }
+  #scene canvas { display: block; position: absolute; inset: 0; }
+  .qlabel { font: 600 14px var(--mono); color: var(--text); text-shadow: 0 1px 4px #000; pointer-events: none; }
+  .qsub { font: 11px var(--mono); color: var(--muted); text-shadow: 0 1px 3px #000; pointer-events: none; text-align: center; }
+  .axis { font: 11px var(--mono); color: var(--muted); pointer-events: none; opacity: .85; }
+  #empty[hidden], #timeline[hidden] { display: none; }
+  #timeline {
+    margin: 0 16px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px 12px; display: grid; gap: 8px;
+  }
+  #timeline .row button { padding: 5px 10px; min-width: 36px; }
+  #step-label { font: 13px var(--mono); margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #slider { width: 100%; accent-color: var(--accent); margin: 0; }
+  #chips { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+  #chips button {
+    flex: none; padding: 3px 8px; font: 12px var(--mono); border-radius: 6px;
+    color: var(--muted); background: var(--panel-2);
+  }
+  #chips button.done { color: var(--text); }
+  #chips button.active { background: var(--accent); border-color: var(--accent); color: #0b0e14; }
+  .qlabel.active { color: var(--accent); }
+  #empty {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--muted); pointer-events: none; text-align: center; padding: 16px;
+  }
+
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+  .tabs button { border: 0; background: transparent; padding: 7px; border-radius: 7px; color: var(--muted); }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: #0b0e14; }
+  #lesson-intro { margin: 10px 0; color: var(--text); }
+  #lesson-panel .row button { flex: 1; padding: 7px 10px; }
+  #lesson-panel .row button:disabled { opacity: .4; cursor: default; }
+  #caption {
+    font-size: 13px; line-height: 1.55; color: var(--text);
+    border-left: 3px solid var(--accent); padding: 2px 0 2px 10px;
+  }
+  #caption[hidden], #reroll[hidden], #clbits[hidden] { display: none; }
+  #timeline .row { flex-wrap: wrap; }
+  #clbits { margin-left: auto; font: 13px var(--mono); color: var(--muted); }
+  #clbits b { color: var(--text); font-weight: 500; }
+
+  @media (max-width: 800px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 70vh auto; overflow: auto; height: auto; }
+    main { order: -1; height: 70vh; }
+    aside { border-right: 0; border-top: 1px solid var(--border); }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<aside>
+  <h1>Qubit Visualizer 3D<small>Từ Bit đến Qubit · Qiskit + Three.js</small></h1>
+
+  <div class="tabs" role="tablist">
+    <button id="tab-lessons" role="tab" aria-selected="true">Bài học</button>
+    <button id="tab-free" role="tab" aria-selected="false">Tự do</button>
+  </div>
+
+  <section id="lesson-panel" hidden>
+    <select id="lesson-select" aria-label="Chọn bài học"></select>
+    <p id="lesson-intro"></p>
+    <div class="row">
+      <button id="lesson-prev">← Bài trước</button>
+      <button id="lesson-next">Bài sau →</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mạch lượng tử</h2>
+    <div id="examples-wrap">
+      <select id="examples" aria-label="Chọn ví dụ"><option value="">— Chọn ví dụ —</option></select>
+      <div style="height:8px"></div>
+    </div>
+    <textarea id="code" spellcheck="false" aria-label="Qiskit code">circ = QuantumCircuit(2)
+circ.h(0)
+circ.cx(0, 1)</textarea>
+    <div class="row" style="margin-top:8px">
+      <button id="run" class="primary">Mô phỏng</button>
+    </div>
+    <div class="hint" style="margin-top:6px">Ctrl + Enter để chạy. Có sẵn <code>QuantumCircuit</code> và <code>np</code>.</div>
+    <div id="status" role="status"></div>
+  </section>
+
+  <section id="qubits-section" hidden>
+    <h2>Từng qubit</h2>
+    <table>
+      <thead><tr><th>Qubit</th><th>Bloch (x, y, z)</th><th>Độ tinh khiết</th><th></th></tr></thead>
+      <tbody id="qubits"></tbody>
+    </table>
+  </section>
+
+  <section id="pairs-section" hidden>
+    <h2>Từng cặp qubit</h2>
+    <table>
+      <thead><tr><th>Cặp</th><th>Concurrence</th><th>Mutual info</th><th></th></tr></thead>
+      <tbody id="pairs"></tbody>
+    </table>
+  </section>
+
+  <section id="probs-section" hidden>
+    <h2>Xác suất đo</h2>
+    <div class="bars" id="probs"></div>
+    <div class="hint" style="margin-top:6px">Thứ tự bit kiểu Qiskit: q<sub>n−1</sub> … q<sub>0</sub>. Màu thanh thể hiện pha của biên độ.</div>
+  </section>
+
+  <section id="counts-section" hidden>
+    <h2 id="counts-title">Thống kê đo</h2>
+    <div class="bars" id="counts"></div>
+    <div class="hint" style="margin-top:6px">Chạy lại mạch nhiều lần bằng Qiskit Aer. Thứ tự bit: c<sub>n−1</sub> … c<sub>0</sub>.</div>
+  </section>
+
+  <section>
+    <h2>Cách đọc</h2>
+    <div class="legend">
+      <div>Thanh dưới cảnh 3D: chạy từng cổng (phím ← → và Space). Qubit mà cổng tác động sẽ sáng lên.</div>
+      <div>Mũi tên = vector Bloch. Đỉnh cầu là |0⟩, đáy là |1⟩, xích đạo là chồng chất.</div>
+      <div>Mũi tên ngắn lại = qubit không còn trạng thái riêng, tức đang rối với qubit khác.</div>
+      <div><span class="sw" style="background:var(--entangled)"></span>Rối lượng tử giữa hai qubit (concurrence &gt; 0)</div>
+      <div><span class="sw" style="background:repeating-linear-gradient(90deg,var(--correlated) 0 5px,transparent 5px 9px)"></span>Chỉ tương quan, không rối từng cặp (ví dụ GHZ)</div>
+      <div>Quả cầu loé trắng = phép đo. Mũi tên nhảy ngay về một cực (sụp đổ), không quay dần như khi qua cổng.</div>
+    </div>
+  </section>
+</aside>
+
+<main>
+  <div id="scene"></div>
+  <div id="empty">Đang kết nối backend…</div>
+  <div id="timeline" hidden>
+    <div class="row">
+      <button id="prev" aria-label="Bước trước">⏮</button>
+      <button id="play" aria-label="Chạy">▶</button>
+      <button id="next" aria-label="Bước sau">⏭</button>
+      <span id="step-label"></span>
+      <span id="clbits" hidden></span>
+      <button id="reroll" hidden>🎲 Đo lại</button>
+    </div>
+    <div id="caption" hidden></div>
+    <input id="slider" type="range" min="0" value="0" aria-label="Bước">
+    <div id="chips"></div>
+  </div>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// When opened as a local file, talk to the default backend address
+const API = location.protocol === 'file:' ? 'http://localhost:5000' : '';
+const EPS = 1e-6;
+
+const css = getComputedStyle(document.documentElement);
+const color = name => new THREE.Color(css.getPropertyValue(name).trim());
+const COLORS = {
+  bg: color('--bg'),
+  zero: color('--zero'),
+  one: color('--one'),
+  entangled: color('--entangled'),
+  correlated: color('--correlated'),
+  grid: new THREE.Color('#3a4560'),
+  active: color('--accent'),
+  flash: new THREE.Color(0xffffff),
+};
+const SHELL_IDLE = new THREE.Color(0x8fa7d9);
+
+// ---------- Scene ----------
+const container = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+container.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.inset = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+container.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = COLORS.bg;
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+camera.position.set(4, 3, 8);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+keyLight.position.set(5, 8, 6);
+scene.add(keyLight);
+
+function resize() {
+  const { clientWidth: w, clientHeight: h } = container;
+  renderer.setSize(w, h);
+  labelRenderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(container);
+resize();
+
+// Bloch (x, y, z) -> Three.js: x to the right, y into the screen, z up.
+// Right x into-screen = up, so handedness is preserved.
+const blochToWorld = ([x, y, z]) => new THREE.Vector3(x, z, -y);
+
+function label(text, cls) {
+  const el = document.createElement('div');
+  el.className = cls;
+  el.textContent = text;
+  return new CSS2DObject(el);
+}
+
+// ---------- One Bloch sphere ----------
+class BlochSphere {
+  constructor(index, showAxes) {
+    this.group = new THREE.Group();
+
+    this.shell = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 48, 32),
+      new THREE.MeshPhongMaterial({ color: SHELL_IDLE, transparent: true, opacity: 0.07, depthWrite: false })
+    );
+    this.group.add(this.shell);
+
+    const wire = new THREE.LineBasicMaterial({ color: COLORS.grid, transparent: true, opacity: 0.55 });
+    const circle = new THREE.BufferGeometry().setFromPoints(
+      new THREE.EllipseCurve(0, 0, 1, 1).getPoints(96).map(p => new THREE.Vector3(p.x, 0, p.y))
+    );
+    const equator = new THREE.LineLoop(circle, wire);
+    const meridianA = new THREE.LineLoop(circle, wire); meridianA.rotation.x = Math.PI / 2;
+    const meridianB = new THREE.LineLoop(circle, wire); meridianB.rotation.z = Math.PI / 2;
+    this.group.add(equator, meridianA, meridianB);
+
+    const axisMat = new THREE.LineBasicMaterial({ color: COLORS.grid });
+    for (const v of [[1, 0, 0], [0, 1, 0], [0, 0, 1]]) {
+      const d = blochToWorld(v).multiplyScalar(1.15);
+      this.group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([d.clone().negate(), d]), axisMat));
+    }
+
+    if (showAxes) {
+      for (const [text, v] of [['|0⟩', [0, 0, 1.3]], ['|1⟩', [0, 0, -1.3]], ['|+⟩', [1.3, 0, 0]], ['|−⟩', [-1.3, 0, 0]], ['|+i⟩', [0, 1.3, 0]]]) {
+        const l = label(text, 'axis');
+        l.position.copy(blochToWorld(v));
+        this.group.add(l);
+      }
+    }
+
+    // Glow in the core grows with entanglement entropy (a mixed reduced state)
+    this.core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.1, 24, 16),
+      new THREE.MeshBasicMaterial({
+        color: COLORS.entangled, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      })
+    );
+    this.group.add(this.core);
+
+    // Arrow: shaft + head, pointing along +Y and scaled/rotated as a whole
+    this.arrow = new THREE.Group();
+    this.arrowMat = new THREE.MeshPhongMaterial({ color: COLORS.zero, emissive: COLORS.zero, emissiveIntensity: 0.25 });
+    this.shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 16), this.arrowMat);
+    this.head = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 20), this.arrowMat);
+    this.arrow.add(this.shaft, this.head);
+    this.tip = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), this.arrowMat);
+    this.group.add(this.arrow, this.tip);
+
+    this.name = label(`q${index}`, 'qlabel');
+    this.name.position.set(0, 1.6, 0);
+    this.sub = label('', 'qsub');
+    this.sub.position.set(0, -1.55, 0);
+    this.group.add(this.name, this.sub);
+
+    // Arrow is animated as direction (moves along the sphere surface) + length,
+    // so a rotation never passes through the inside of the sphere.
+    this.dir = new THREE.Vector3(0, 1, 0);
+    this.len = 1;
+    this.targetDir = this.dir.clone();
+    this.targetLen = 1;
+    this.targetGlow = 0;
+    this.active = false;
+    this.flashLevel = 0;
+    this.setArrow(this.dir.clone().multiplyScalar(this.len));
+  }
+
+  update(q, prob1, snap = false) {
+    const target = blochToWorld(q.bloch_vector);
+    this.targetLen = target.length();
+    if (this.targetLen > 1e-6) this.targetDir = target.normalize();
+    // Measurement collapse is instantaneous, not a rotation
+    if (snap) {
+      this.dir.copy(this.targetDir);
+      this.len = this.targetLen;
+    }
+    this.targetGlow = q.entangled ? Math.min(1, q.entropy) : 0;
+    const t = THREE.MathUtils.clamp((1 - q.bloch_vector[2]) / 2, 0, 1);
+    this.arrowMat.color.copy(COLORS.zero).lerp(COLORS.one, t);
+    this.arrowMat.emissive.copy(this.arrowMat.color);
+    this.sub.element.textContent = `P(1) = ${prob1.toFixed(2)}`;
+  }
+
+  setArrow(v) {
+    const len = v.length();
+    const visible = len > 0.02;
+    this.arrow.visible = this.tip.visible = visible;
+    if (!visible) return;
+    const headLen = Math.min(0.2, len * 0.5);
+    this.shaft.scale.set(1, len - headLen, 1);
+    this.shaft.position.y = (len - headLen) / 2;
+    this.head.scale.setScalar(headLen / 0.2);
+    this.head.position.y = len - headLen / 2;
+    this.arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.clone().normalize());
+    this.tip.position.copy(v);
+  }
+
+  flash() {
+    this.flashLevel = 1;
+  }
+
+  setActive(active) {
+    this.active = active;
+    this.name.element.classList.toggle('active', active);
+  }
+
+  tick(dt, time) {
+    const k = 1 - Math.exp(-dt * 6);
+
+    const angle = this.dir.angleTo(this.targetDir);
+    if (this.len < 0.02) {
+      this.dir.copy(this.targetDir);
+    } else if (angle > 1e-4) {
+      const axis = new THREE.Vector3().crossVectors(this.dir, this.targetDir);
+      if (axis.lengthSq() < 1e-10) {
+        // Opposite vectors (e.g. X gate): any perpendicular axis works; prefer the screen-depth axis
+        axis.set(0, 0, 1).cross(this.dir);
+        if (axis.lengthSq() < 1e-10) axis.set(1, 0, 0);
+      }
+      this.dir.applyAxisAngle(axis.normalize(), angle * k).normalize();
+    }
+    this.len += (this.targetLen - this.len) * k;
+    this.setArrow(this.dir.clone().multiplyScalar(this.len));
+
+    const sm = this.shell.material;
+    sm.color.lerp(this.active ? COLORS.active : SHELL_IDLE, k);
+    sm.opacity += ((this.active ? 0.2 : 0.07) - sm.opacity) * k;
+    if (this.flashLevel > 0.01) {
+      this.flashLevel *= Math.exp(-dt * 3);
+      sm.color.lerp(COLORS.flash, this.flashLevel);
+      sm.opacity = Math.max(sm.opacity, 0.55 * this.flashLevel);
+    }
+    const m = this.core.material;
+    m.opacity += (this.targetGlow * (0.45 + 0.15 * Math.sin(time * 3)) - m.opacity) * k;
+    this.core.scale.setScalar(1 + this.targetGlow * (1.2 + 0.2 * Math.sin(time * 3)));
+  }
+
+  dispose() {
+    this.group.traverse(o => {
+      o.geometry?.dispose();
+      if (o.material && o.material !== this.arrowMat) o.material.dispose();
+      if (o.isCSS2DObject) o.element.remove();
+    });
+    this.arrowMat.dispose();
+  }
+}
+
+// ---------- Scene state ----------
+let spheres = [];
+let links = new THREE.Group();
+scene.add(links);
+
+function layout(n) {
+  const cols = n <= 4 ? n : Math.ceil(Math.sqrt(n));
+  const spacing = 3;
+  const rows = Math.ceil(n / cols);
+  return Array.from({ length: n }, (_, i) => {
+    const c = i % cols, r = Math.floor(i / cols);
+    return new THREE.Vector3((c - (cols - 1) / 2) * spacing, -(r - (rows - 1) / 2) * spacing * 1.2, 0);
+  });
+}
+
+function rebuildSpheres(n) {
+  spheres.forEach(s => { scene.remove(s.group); s.dispose(); });
+  const positions = layout(n);
+  spheres = positions.map((p, i) => {
+    const s = new BlochSphere(i, n <= 4);
+    s.group.position.copy(p);
+    scene.add(s.group);
+    return s;
+  });
+
+  const box = new THREE.Box3();
+  positions.forEach(p => box.expandByPoint(p));
+  box.expandByScalar(1.8);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const fov = THREE.MathUtils.degToRad(camera.fov);
+  const dist = Math.max(size.y / (2 * Math.tan(fov / 2)), size.x / (2 * Math.tan(fov / 2) * camera.aspect)) * 1.1;
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(0.25, 0.45, 1).normalize().multiplyScalar(dist + 2));
+}
+
+function rebuildLinks(pairs) {
+  links.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
+  scene.remove(links);
+  links = new THREE.Group();
+  scene.add(links);
+
+  for (const p of pairs) {
+    const [i, j] = p.qubits;
+    const a = spheres[i].group.position, b = spheres[j].group.position;
+    const lift = 1.4 + 0.35 * a.distanceTo(b);
+    const mid = a.clone().add(b).multiplyScalar(0.5).add(new THREE.Vector3(0, lift, 0));
+    const curve = new THREE.QuadraticBezierCurve3(
+      a.clone().add(new THREE.Vector3(0, 1.05, 0)), mid, b.clone().add(new THREE.Vector3(0, 1.05, 0))
+    );
+
+    if (p.concurrence > EPS) {
+      const tube = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 48, 0.02 + 0.05 * p.concurrence, 10),
+        new THREE.MeshBasicMaterial({ color: COLORS.entangled, transparent: true, opacity: 0.35 + 0.6 * p.concurrence })
+      );
+      tube.userData.pulse = p.concurrence;
+      links.add(tube);
+    } else if (p.mutual_information > EPS) {
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(curve.getPoints(48)),
+        new THREE.LineDashedMaterial({
+          color: COLORS.correlated, dashSize: 0.15, gapSize: 0.1,
+          transparent: true, opacity: 0.3 + 0.35 * Math.min(1, p.mutual_information),
+        })
+      );
+      line.computeLineDistances();
+      links.add(line);
+    }
+  }
+}
+
+// ---------- Side panel ----------
+const $ = id => document.getElementById(id);
+const fmt = v => (Math.abs(v) < 5e-4 ? 0 : v).toFixed(2);
+
+function setStatus(text, kind = '') {
+  $('status').textContent = text;
+  $('status').className = kind;
+}
+
+function renderPanel(r) {
+  $('qubits').innerHTML = r.qubits.map(q => `
+    <tr>
+      <td>q${q.qubit}</td>
+      <td class="num">(${q.bloch_vector.map(fmt).join(', ')})</td>
+      <td class="num">${q.purity.toFixed(2)}</td>
+      <td>${q.entangled ? '<span class="tag ent">rối</span>' : '<span class="tag pure">riêng</span>'}</td>
+    </tr>`).join('');
+
+  $('pairs').innerHTML = r.pairs.map(p => {
+    const tag = p.concurrence > EPS ? '<span class="tag ent">rối</span>'
+      : p.mutual_information > EPS ? '<span class="tag corr">tương quan</span>'
+      : '<span class="tag none">độc lập</span>';
+    return `<tr><td>q${p.qubits[0]}–q${p.qubits[1]}</td>
+      <td class="num">${p.concurrence.toFixed(2)}</td>
+      <td class="num">${p.mutual_information.toFixed(2)}</td><td>${tag}</td></tr>`;
+  }).join('');
+
+  const bars = r.statevector
+    .map(([re, im], idx) => ({ idx, p: re * re + im * im, phase: Math.atan2(im, re) }))
+    .filter(b => b.p > 1e-9)
+    .sort((a, b) => b.p - a.p)
+    .slice(0, 32);
+  $('probs').innerHTML = bars.map(b => {
+    // Phase 0 maps to the accent blue, then rotates around the colour wheel
+    const hue = (220 + b.phase * 180 / Math.PI + 360) % 360;
+    return `<div class="bar"><code>|${b.idx.toString(2).padStart(r.num_qubits, '0')}⟩</code>
+      <div class="track"><div class="fill" style="width:${b.p * 100}%;background:hsl(${hue} 70% 62%)"></div></div>
+      <span class="p">${b.p.toFixed(3)}</span></div>`;
+  }).join('');
+
+  $('qubits-section').hidden = false;
+  $('pairs-section').hidden = r.pairs.length === 0;
+  $('probs-section').hidden = false;
+}
+
+function show(state, numQubits, gate = null) {
+  if (spheres.length !== numQubits) rebuildSpheres(numQubits);
+  const measured = gate?.name === 'measure';
+  state.qubits.forEach((q, i) => {
+    const touched = !!gate && gate.qubits.includes(i);
+    spheres[i].update(q, state.marginal_probabilities[i].prob_1, measured);
+    spheres[i].setActive(touched);
+    if (measured && touched) spheres[i].flash();
+  });
+  rebuildLinks(state.pairs);
+  renderPanel({ ...state, num_qubits: numQubits });
+  $('empty').hidden = true;
+}
+
+// ---------- Step-by-step timeline ----------
+const CONTROLLED = new Set(['cx', 'cy', 'cz', 'ch', 'cp', 'crx', 'cry', 'crz', 'cu', 'cs', 'csx']);
+let result = null;
+let step = 0;
+let playTimer = null;
+
+function fmtAngle(v) {
+  if (typeof v !== 'number') return String(v);
+  const r = v / Math.PI;
+  for (let d = 1; d <= 8; d++) {
+    const n = Math.round(r * d);
+    if (n !== 0 && Math.abs(r * d - n) < 1e-6) {
+      const sign = n < 0 ? '−' : '';
+      const num = Math.abs(n) === 1 ? 'π' : `${Math.abs(n)}π`;
+      return d === 1 ? sign + num : `${sign}${num}/${d}`;
+    }
+  }
+  return v.toFixed(2);
+}
+
+function gateLabel(g) {
+  if (!g) return '|' + '0'.repeat(result.num_qubits) + '⟩';
+  if (g.name === 'measure') return `M q${g.qubits[0]}→c${g.clbits[0]} = ${g.outcome}`;
+  const name = g.name.toUpperCase() + (g.params.length ? `(${g.params.map(fmtAngle).join(', ')})` : '');
+  const qs = g.qubits.map(q => `q${q}`);
+  if (CONTROLLED.has(g.name) && qs.length === 2) return `${name} ${qs[0]}→${qs[1]}`;
+  if (g.name === 'ccx' && qs.length === 3) return `${name} ${qs[0]},${qs[1]}→${qs[2]}`;
+  return `${name} ${qs.join(',')}`;
+}
+
+function goTo(i) {
+  const steps = result.steps;
+  step = Math.max(0, Math.min(i, steps.length - 1));
+  const s = steps[step];
+  show(s, result.num_qubits, s.gate);
+
+  const note = notes?.[step];
+  $('caption').hidden = !note;
+  $('caption').textContent = note || '';
+
+  const bits = s.clbits || [];
+  $('clbits').hidden = bits.length === 0;
+  $('clbits').innerHTML = 'c = ' + [...bits].reverse().map(b => (b === null ? '·' : `<b>${b}</b>`)).join(' ');
+
+  $('slider').value = step;
+  $('step-label').textContent = step === 0
+    ? `Bước 0/${steps.length - 1} · trạng thái ban đầu`
+    : `Bước ${step}/${steps.length - 1} · ${s.gate.name === 'measure'
+      ? `Đo q${s.gate.qubits[0]} → c${s.gate.clbits[0]} = ${s.gate.outcome}`
+      : gateLabel(s.gate)}`;
+  [...$('chips').children].forEach((c, j) => {
+    c.classList.toggle('active', j === step);
+    c.classList.toggle('done', j < step);
+  });
+  // Scroll only the chip row; scrollIntoView would also scroll the page
+  const chips = $('chips'), chip = chips.children[step];
+  if (chip) {
+    const left = chip.offsetLeft - chips.offsetLeft;
+    if (left < chips.scrollLeft) chips.scrollLeft = left;
+    else if (left + chip.offsetWidth > chips.scrollLeft + chips.clientWidth) chips.scrollLeft = left + chip.offsetWidth - chips.clientWidth;
+  }
+}
+
+function stop() {
+  clearInterval(playTimer);
+  playTimer = null;
+  $('play').textContent = '▶';
+}
+
+function play() {
+  if (!result?.steps) return;
+  if (step >= result.steps.length - 1) goTo(0);
+  $('play').textContent = '⏸';
+  playTimer = setInterval(() => {
+    if (step >= result.steps.length - 1) return stop();
+    goTo(step + 1);
+  }, 1100);
+}
+
+function renderCounts(data) {
+  const section = $('counts-section');
+  section.hidden = !data.counts;
+  $('reroll').hidden = !data.counts || !data.steps;
+  if (!data.counts) return;
+  $('counts-title').textContent = `Thống kê đo (${data.shots} lần)`;
+  const entries = Object.entries(data.counts).sort(([a], [b]) => a.localeCompare(b));
+  $('counts').innerHTML = entries.map(([bits, n]) => {
+    const p = n / data.shots;
+    return `<div class="bar"><code>${bits}</code>
+      <div class="track"><div class="fill" style="width:${p * 100}%;background:var(--accent)"></div></div>
+      <span class="p">${n}</span></div>`;
+  }).join('');
+}
+
+function load(data, startAt = 0) {
+  stop();
+  result = data;
+  renderCounts(data);
+  if (!data.steps) {
+    $('timeline').hidden = true;
+    show(data, data.num_qubits);
+    return;
+  }
+  $('timeline').hidden = false;
+  $('slider').max = data.steps.length - 1;
+  $('chips').innerHTML = '';
+  data.steps.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.textContent = gateLabel(s.gate);
+    b.addEventListener('click', () => { stop(); goTo(i); });
+    $('chips').appendChild(b);
+  });
+
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion || data.steps.length < 2) {
+    goTo(data.steps.length - 1);
+  } else {
+    goTo(startAt);
+    play();
+  }
+}
+
+$('play').addEventListener('click', () => (playTimer ? stop() : play()));
+$('prev').addEventListener('click', () => { stop(); goTo(step - 1); });
+$('next').addEventListener('click', () => { stop(); goTo(step + 1); });
+$('slider').addEventListener('input', e => { stop(); goTo(+e.target.value); });
+document.addEventListener('keydown', e => {
+  if (!result?.steps || e.target.closest('textarea, input, select')) return;
+  if (e.key === 'ArrowLeft') { stop(); goTo(step - 1); }
+  else if (e.key === 'ArrowRight') { stop(); goTo(step + 1); }
+  else if (e.key === ' ' && !e.target.closest('button')) { e.preventDefault(); playTimer ? stop() : play(); }
+});
+
+// ---------- Backend ----------
+async function simulate({ fromMeasurement = false } = {}) {
+  const btn = $('run');
+  btn.disabled = true;
+  setStatus('Đang mô phỏng…');
+  try {
+    const res = await fetch(`${API}/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qiskit_code: $('code').value }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Mô phỏng thất bại');
+    if (!data.qubits) throw new Error('Backend chưa trả vector Bloch. Hãy chạy quantum_backend.py (bản dùng Qiskit).');
+    // Lesson notes only apply while the lesson's own code is running unchanged
+    const lesson = mode === 'lessons' ? lessons[lessonIdx] : null;
+    notes = lesson && $('code').value.trim() === lesson.code.trim()
+      && data.steps && lesson.notes.length === data.steps.length ? lesson.notes : null;
+
+    const firstMeasure = data.steps ? data.steps.findIndex(s => s.gate?.name === 'measure') : -1;
+    load(data, fromMeasurement && firstMeasure > 0 ? firstMeasure - 1 : 0);
+    setStatus(`${data.num_qubits} qubit · độ sâu ${data.circuit_depth} · ${data.circuit_size} cổng`
+      + (data.steps ? '' : ' · mạch quá lớn, chỉ hiện kết quả cuối'), 'ok');
+  } catch (err) {
+    setStatus(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadExamples() {
+  try {
+    const res = await fetch(`${API}/example_circuits`);
+    const { examples } = await res.json();
+    const select = $('examples');
+    for (const [name, code] of Object.entries(examples)) {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = name.replace(/_/g, ' ');
+      select.appendChild(opt);
+    }
+    return true;
+  } catch {
+    $('empty').textContent = `Không kết nối được backend${API ? ' tại ' + API : ''}. Hãy chạy: python quantum_backend.py`;
+    return false;
+  }
+}
+
+// ---------- Lessons ----------
+let lessons = [];
+let lessonIdx = 0;
+let notes = null;
+let mode = 'free';
+
+const pref = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+};
+
+async function loadLessons() {
+  try {
+    const res = await fetch(`${API}/lessons.json`);
+    lessons = (await res.json()).lessons;
+  } catch {
+    lessons = [];
+  }
+  $('lesson-select').innerHTML = lessons.map((l, i) => `<option value="${i}">${l.title}</option>`).join('');
+}
+
+function openLesson(i) {
+  lessonIdx = Math.max(0, Math.min(i, lessons.length - 1));
+  const lesson = lessons[lessonIdx];
+  $('lesson-select').value = lessonIdx;
+  $('lesson-intro').textContent = lesson.intro;
+  $('lesson-prev').disabled = lessonIdx === 0;
+  $('lesson-next').disabled = lessonIdx === lessons.length - 1;
+  $('code').value = lesson.code;
+  pref.set('fbq-lesson', lessonIdx);
+  simulate();
+}
+
+function setMode(next) {
+  mode = next === 'lessons' && lessons.length ? 'lessons' : 'free';
+  pref.set('fbq-mode', mode);
+  $('tab-lessons').setAttribute('aria-selected', mode === 'lessons');
+  $('tab-free').setAttribute('aria-selected', mode === 'free');
+  $('lesson-panel').hidden = mode !== 'lessons';
+  $('examples-wrap').hidden = mode === 'lessons';
+  if (mode === 'lessons') openLesson(lessonIdx);
+  else simulate();
+}
+
+$('tab-lessons').addEventListener('click', () => mode !== 'lessons' && setMode('lessons'));
+$('tab-free').addEventListener('click', () => mode !== 'free' && setMode('free'));
+$('lesson-select').addEventListener('change', e => openLesson(+e.target.value));
+$('lesson-prev').addEventListener('click', () => openLesson(lessonIdx - 1));
+$('lesson-next').addEventListener('click', () => openLesson(lessonIdx + 1));
+$('reroll').addEventListener('click', () => simulate({ fromMeasurement: true }));
+
+$('run').addEventListener('click', () => simulate());
+$('code').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); simulate(); }
+});
+$('examples').addEventListener('change', e => {
+  if (!e.target.value) return;
+  $('code').value = e.target.value;
+  simulate();
+});
+
+// ---------- Loop ----------
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  const time = clock.elapsedTime;
+  spheres.forEach(s => s.tick(dt, time));
+  links.children.forEach(l => {
+    if (l.userData.pulse) l.material.opacity = 0.35 + 0.5 * l.userData.pulse * (0.75 + 0.25 * Math.sin(time * 4));
+  });
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+
+if (await loadExamples()) {
+  await loadLessons();
+  lessonIdx = Math.min(+pref.get('fbq-lesson') || 0, Math.max(lessons.length - 1, 0));
+  setMode(pref.get('fbq-mode') || 'lessons');
+}
+</script>
+</body>
+</html>

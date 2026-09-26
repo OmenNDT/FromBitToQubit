@@ -1,7 +1,5 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import numpy as np
-import json
 import traceback
 import os
 import logging
@@ -14,7 +12,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
+
+app = Flask(__name__, static_folder=WEB_DIR, static_url_path='')
 CORS(app)  # Enable CORS for Unity communication
 
 # Configuration from environment variables
@@ -24,84 +24,20 @@ DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 
 # Try to import Qiskit, fall back to simple simulation if not available
 try:
-    from qiskit import QuantumCircuit
-    from qiskit.quantum_info import Statevector
+    from quantum_analysis import EXAMPLES, analyze_circuit, load_circuit
     QISKIT_AVAILABLE = True
     logger.info("Qiskit is available - using full quantum simulation")
 except ImportError:
     QISKIT_AVAILABLE = False
     logger.warning("Qiskit not available - using simplified simulation")
 
-def simulate_with_qiskit(qiskit_code):
+def simulate_with_qiskit(qiskit_code, seed=None):
     """Full Qiskit simulation"""
     try:
-        # Create a safe execution environment
-        safe_globals = {
-            'QuantumCircuit': QuantumCircuit,
-            'np': np,
-            '__builtins__': {},
-        }
-        
-        safe_locals = {}
-        
-        # Execute the Qiskit code
-        exec(qiskit_code, safe_globals, safe_locals)
-        
-        # Find the circuit in the executed code
-        circuit = None
-        for var_name, var_value in safe_locals.items():
-            if isinstance(var_value, QuantumCircuit):
-                circuit = var_value
-                break
-        
-        if circuit is None:
-            raise ValueError('No QuantumCircuit found in the provided code')
-        
-        # Get the number of qubits
-        num_qubits = circuit.num_qubits
-        
-        # Simulate using statevector
-        initial_state = Statevector.from_int(0, 2**num_qubits)
-        final_state = initial_state.evolve(circuit)
-        
-        # Convert statevector to list format for JSON serialization
-        statevector_data = []
-        for amplitude in final_state.data:
-            statevector_data.append([float(amplitude.real), float(amplitude.imag)])
-        
-        # Calculate probabilities for each computational basis state
-        probabilities = [float(abs(amplitude)**2) for amplitude in final_state.data]
-        
-        # Calculate marginal probabilities for individual qubits
-        marginal_probabilities = []
-        for qubit_idx in range(num_qubits):
-            prob_0 = 0.0
-            prob_1 = 0.0
-            
-            for state_idx in range(2**num_qubits):
-                # Check if qubit_idx is 0 or 1 in this computational basis state
-                if (state_idx >> qubit_idx) & 1 == 0:
-                    prob_0 += probabilities[state_idx]
-                else:
-                    prob_1 += probabilities[state_idx]
-            
-            marginal_probabilities.append({
-                'qubit': qubit_idx,
-                'prob_0': float(prob_0),
-                'prob_1': float(prob_1)
-            })
-        
-        return {
-            'success': True,
-            'statevector': statevector_data,
-            'num_qubits': num_qubits,
-            'probabilities': probabilities,
-            'marginal_probabilities': marginal_probabilities,
-            'circuit_depth': circuit.depth(),
-            'circuit_size': circuit.size(),
-            'simulation_type': 'qiskit'
-        }
-        
+        result = analyze_circuit(load_circuit(qiskit_code), seed=seed)
+        result['simulation_type'] = 'qiskit'
+        return result
+
     except Exception as e:
         logger.error(f"Qiskit simulation error: {str(e)}")
         raise
@@ -211,7 +147,7 @@ def simulate_quantum_circuit():
         logger.info(f"Simulating circuit: {qiskit_code[:100]}...")
         
         if QISKIT_AVAILABLE:
-            result = simulate_with_qiskit(qiskit_code)
+            result = simulate_with_qiskit(qiskit_code, seed=data.get('seed'))
         else:
             result = simulate_simple_circuit(qiskit_code)
         
@@ -226,6 +162,11 @@ def simulate_quantum_circuit():
             'error': error_msg,
             'traceback': traceback.format_exc()
         }), 500
+
+@app.route('/', methods=['GET'])
+def web_visualizer():
+    """Serve the Three.js web visualizer"""
+    return send_from_directory(WEB_DIR, 'index.html')
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -280,17 +221,8 @@ circ.x(0)'''
     }
     
     if QISKIT_AVAILABLE:
-        examples['quantum_fourier_transform'] = '''# QFT on 3 qubits
-import numpy as np
-circ = QuantumCircuit(3)
-circ.h(0)
-circ.cp(np.pi/2, 0, 1)
-circ.cp(np.pi/4, 0, 2)
-circ.h(1)
-circ.cp(np.pi/2, 1, 2)
-circ.h(2)
-circ.swap(0, 2)'''
-    
+        examples = EXAMPLES
+
     return jsonify({
         'success': True,
         'examples': examples,
