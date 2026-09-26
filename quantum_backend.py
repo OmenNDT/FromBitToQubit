@@ -1,11 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import numpy as np
-from qiskit import QuantumCircuit
-from qiskit.quantum_info import Statevector
-from qiskit_aer import AerSimulator
-import json
 import traceback
+
+from quantum_analysis import analyze_circuit, load_circuit
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Unity communication
@@ -26,6 +23,9 @@ def simulate_quantum_circuit():
         "statevector": [[real, imag], ...],
         "num_qubits": int,
         "probabilities": [float, ...],
+        "marginal_probabilities": [{"qubit", "prob_0", "prob_1"}, ...],
+        "qubits": [{"qubit", "bloch_vector", "purity", "entropy", "entangled"}, ...],
+        "pairs": [{"qubits", "concurrence", "mutual_information"}, ...],
         "error": str (if success=False)
     }
     """
@@ -38,76 +38,8 @@ def simulate_quantum_circuit():
                 'error': 'Missing qiskit_code parameter'
             }), 400
         
-        qiskit_code = data['qiskit_code']
-        
-        # Create a safe execution environment
-        safe_globals = {
-            'QuantumCircuit': QuantumCircuit,
-            'np': np,
-            '__builtins__': {},
-        }
-        
-        safe_locals = {}
-        
-        # Execute the Qiskit code
-        exec(qiskit_code, safe_globals, safe_locals)
-        
-        # Find the circuit in the executed code
-        circuit = None
-        for var_name, var_value in safe_locals.items():
-            if isinstance(var_value, QuantumCircuit):
-                circuit = var_value
-                break
-        
-        if circuit is None:
-            return jsonify({
-                'success': False,
-                'error': 'No QuantumCircuit found in the provided code'
-            }), 400
-        
-        # Get the number of qubits
-        num_qubits = circuit.num_qubits
-        
-        # Simulate using statevector
-        initial_state = Statevector.from_int(0, 2**num_qubits)
-        final_state = initial_state.evolve(circuit)
-        
-        # Convert statevector to list format for JSON serialization
-        statevector_data = []
-        for amplitude in final_state.data:
-            statevector_data.append([float(amplitude.real), float(amplitude.imag)])
-        
-        # Calculate probabilities for each computational basis state
-        probabilities = [float(abs(amplitude)**2) for amplitude in final_state.data]
-        
-        # Calculate marginal probabilities for individual qubits
-        marginal_probabilities = []
-        for qubit_idx in range(num_qubits):
-            prob_0 = 0.0
-            prob_1 = 0.0
-            
-            for state_idx in range(2**num_qubits):
-                # Check if qubit_idx is 0 or 1 in this computational basis state
-                if (state_idx >> qubit_idx) & 1 == 0:
-                    prob_0 += probabilities[state_idx]
-                else:
-                    prob_1 += probabilities[state_idx]
-            
-            marginal_probabilities.append({
-                'qubit': qubit_idx,
-                'prob_0': float(prob_0),
-                'prob_1': float(prob_1)
-            })
-        
-        return jsonify({
-            'success': True,
-            'statevector': statevector_data,
-            'num_qubits': num_qubits,
-            'probabilities': probabilities,
-            'marginal_probabilities': marginal_probabilities,
-            'circuit_depth': circuit.depth(),
-            'circuit_size': circuit.size()
-        })
+        circuit = load_circuit(data['qiskit_code'])
+        return jsonify(analyze_circuit(circuit))
         
     except Exception as e:
         return jsonify({

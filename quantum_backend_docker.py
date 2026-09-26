@@ -1,7 +1,5 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import numpy as np
-import json
 import traceback
 import os
 import logging
@@ -24,8 +22,7 @@ DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 
 # Try to import Qiskit, fall back to simple simulation if not available
 try:
-    from qiskit import QuantumCircuit
-    from qiskit.quantum_info import Statevector
+    from quantum_analysis import analyze_circuit, load_circuit
     QISKIT_AVAILABLE = True
     logger.info("Qiskit is available - using full quantum simulation")
 except ImportError:
@@ -35,73 +32,10 @@ except ImportError:
 def simulate_with_qiskit(qiskit_code):
     """Full Qiskit simulation"""
     try:
-        # Create a safe execution environment
-        safe_globals = {
-            'QuantumCircuit': QuantumCircuit,
-            'np': np,
-            '__builtins__': {},
-        }
-        
-        safe_locals = {}
-        
-        # Execute the Qiskit code
-        exec(qiskit_code, safe_globals, safe_locals)
-        
-        # Find the circuit in the executed code
-        circuit = None
-        for var_name, var_value in safe_locals.items():
-            if isinstance(var_value, QuantumCircuit):
-                circuit = var_value
-                break
-        
-        if circuit is None:
-            raise ValueError('No QuantumCircuit found in the provided code')
-        
-        # Get the number of qubits
-        num_qubits = circuit.num_qubits
-        
-        # Simulate using statevector
-        initial_state = Statevector.from_int(0, 2**num_qubits)
-        final_state = initial_state.evolve(circuit)
-        
-        # Convert statevector to list format for JSON serialization
-        statevector_data = []
-        for amplitude in final_state.data:
-            statevector_data.append([float(amplitude.real), float(amplitude.imag)])
-        
-        # Calculate probabilities for each computational basis state
-        probabilities = [float(abs(amplitude)**2) for amplitude in final_state.data]
-        
-        # Calculate marginal probabilities for individual qubits
-        marginal_probabilities = []
-        for qubit_idx in range(num_qubits):
-            prob_0 = 0.0
-            prob_1 = 0.0
-            
-            for state_idx in range(2**num_qubits):
-                # Check if qubit_idx is 0 or 1 in this computational basis state
-                if (state_idx >> qubit_idx) & 1 == 0:
-                    prob_0 += probabilities[state_idx]
-                else:
-                    prob_1 += probabilities[state_idx]
-            
-            marginal_probabilities.append({
-                'qubit': qubit_idx,
-                'prob_0': float(prob_0),
-                'prob_1': float(prob_1)
-            })
-        
-        return {
-            'success': True,
-            'statevector': statevector_data,
-            'num_qubits': num_qubits,
-            'probabilities': probabilities,
-            'marginal_probabilities': marginal_probabilities,
-            'circuit_depth': circuit.depth(),
-            'circuit_size': circuit.size(),
-            'simulation_type': 'qiskit'
-        }
-        
+        result = analyze_circuit(load_circuit(qiskit_code))
+        result['simulation_type'] = 'qiskit'
+        return result
+
     except Exception as e:
         logger.error(f"Qiskit simulation error: {str(e)}")
         raise
@@ -281,7 +215,6 @@ circ.x(0)'''
     
     if QISKIT_AVAILABLE:
         examples['quantum_fourier_transform'] = '''# QFT on 3 qubits
-import numpy as np
 circ = QuantumCircuit(3)
 circ.h(0)
 circ.cp(np.pi/2, 0, 1)
