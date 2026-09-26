@@ -24,6 +24,55 @@ ENTANGLEMENT_TOLERANCE = 1e-6
 
 _PAULIS = (Pauli('X'), Pauli('Y'), Pauli('Z'))
 
+EXAMPLES = {
+    'bell_state': '''# Bell State (Entanglement)
+circ = QuantumCircuit(2)
+circ.h(0)
+circ.cx(0, 1)''',
+
+    'ghz_state': '''# GHZ State (3-qubit entanglement)
+circ = QuantumCircuit(3)
+circ.h(0)
+circ.cx(0, 1)
+circ.cx(0, 2)''',
+
+    'superposition': '''# Single qubit superposition
+circ = QuantumCircuit(1)
+circ.h(0)''',
+
+    'x_gate': '''# Simple X gate (bit flip)
+circ = QuantumCircuit(1)
+circ.x(0)''',
+
+    'product_superposition': '''# |+>|+> : four equally likely outcomes, yet NOT entangled
+circ = QuantumCircuit(2)
+circ.h(0)
+circ.h(1)''',
+
+    'partial_entanglement': '''# cos(pi/6)|00> + sin(pi/6)|11> : partially entangled
+circ = QuantumCircuit(2)
+circ.ry(np.pi/3, 0)
+circ.cx(0, 1)''',
+
+    'phase_states': '''# |+>, |->, |+i> : same probabilities, different phase
+circ = QuantumCircuit(3)
+circ.h(0)
+circ.x(1)
+circ.h(1)
+circ.h(2)
+circ.s(2)''',
+
+    'quantum_fourier_transform': '''# QFT on 3 qubits
+circ = QuantumCircuit(3)
+circ.h(0)
+circ.cp(np.pi/2, 0, 1)
+circ.cp(np.pi/4, 0, 2)
+circ.h(1)
+circ.cp(np.pi/2, 1, 2)
+circ.h(2)
+circ.swap(0, 2)''',
+}
+
 
 def load_circuit(qiskit_code):
     """Execute user-provided Qiskit code and return the first QuantumCircuit it defines."""

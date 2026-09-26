@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from quantum_analysis import analyze_circuit, load_circuit
+from quantum_analysis import EXAMPLES, analyze_circuit, load_circuit
 
 
 def analyze(code):
@@ -103,3 +103,10 @@ def test_qiskit_qubit_order_is_little_endian():
 def test_missing_circuit_raises():
     with pytest.raises(ValueError):
         load_circuit("x = 1")
+
+
+@pytest.mark.parametrize('name', sorted(EXAMPLES))
+def test_examples_run(name):
+    result = analyze(EXAMPLES[name])
+    assert result['success']
+    assert sum(result['probabilities']) == pytest.approx(1)

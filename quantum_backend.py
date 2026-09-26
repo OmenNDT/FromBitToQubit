@@ -1,8 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+import os
 import traceback
 
-from quantum_analysis import analyze_circuit, load_circuit
+from quantum_analysis import EXAMPLES, analyze_circuit, load_circuit
+
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Unity communication
@@ -48,6 +51,11 @@ def simulate_quantum_circuit():
             'traceback': traceback.format_exc()
         }), 500
 
+@app.route('/', methods=['GET'])
+def web_visualizer():
+    """Serve the Three.js web visualizer"""
+    return send_from_directory(WEB_DIR, 'index.html')
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -59,40 +67,9 @@ def health_check():
 @app.route('/example_circuits', methods=['GET'])
 def get_example_circuits():
     """Return example quantum circuits for testing"""
-    examples = {
-        'bell_state': '''# Bell State (Entanglement)
-circ = QuantumCircuit(2)
-circ.h(0)
-circ.cx(0, 1)''',
-        
-        'ghz_state': '''# GHZ State (3-qubit entanglement)
-circ = QuantumCircuit(3)
-circ.h(0)
-circ.cx(0, 1)
-circ.cx(0, 2)''',
-        
-        'superposition': '''# Single qubit superposition
-circ = QuantumCircuit(1)
-circ.h(0)''',
-        
-        'x_gate': '''# Simple X gate (bit flip)
-circ = QuantumCircuit(1)
-circ.x(0)''',
-        
-        'quantum_fourier_transform': '''# QFT on 3 qubits
-circ = QuantumCircuit(3)
-circ.h(0)
-circ.cp(np.pi/2, 0, 1)
-circ.cp(np.pi/4, 0, 2)
-circ.h(1)
-circ.cp(np.pi/2, 1, 2)
-circ.h(2)
-circ.swap(0, 2)'''
-    }
-    
     return jsonify({
         'success': True,
-        'examples': examples
+        'examples': EXAMPLES
     })
 
 if __name__ == '__main__':

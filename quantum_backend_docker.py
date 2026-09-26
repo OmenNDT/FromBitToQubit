@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import traceback
 import os
@@ -12,6 +12,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for Unity communication
 
@@ -22,7 +24,7 @@ DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
 
 # Try to import Qiskit, fall back to simple simulation if not available
 try:
-    from quantum_analysis import analyze_circuit, load_circuit
+    from quantum_analysis import EXAMPLES, analyze_circuit, load_circuit
     QISKIT_AVAILABLE = True
     logger.info("Qiskit is available - using full quantum simulation")
 except ImportError:
@@ -161,6 +163,11 @@ def simulate_quantum_circuit():
             'traceback': traceback.format_exc()
         }), 500
 
+@app.route('/', methods=['GET'])
+def web_visualizer():
+    """Serve the Three.js web visualizer"""
+    return send_from_directory(WEB_DIR, 'index.html')
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -214,16 +221,8 @@ circ.x(0)'''
     }
     
     if QISKIT_AVAILABLE:
-        examples['quantum_fourier_transform'] = '''# QFT on 3 qubits
-circ = QuantumCircuit(3)
-circ.h(0)
-circ.cp(np.pi/2, 0, 1)
-circ.cp(np.pi/4, 0, 2)
-circ.h(1)
-circ.cp(np.pi/2, 1, 2)
-circ.h(2)
-circ.swap(0, 2)'''
-    
+        examples = EXAMPLES
+
     return jsonify({
         'success': True,
         'examples': examples,

@@ -5,9 +5,11 @@ Hành trình từ máy tính cổ điển đến lượng tử
 
 ```bash
 pip install -r requirements.txt
-python quantum_backend.py          # http://localhost:5000
+python quantum_backend.py          # mở http://localhost:5000
 python -m pytest test_quantum_analysis.py
 ```
+
+Mở `http://localhost:5000` để dùng giao diện 3D trên trình duyệt (`web/index.html`, Three.js, không cần Unity): mỗi qubit là một Bloch sphere, dây vàng là rối lượng tử giữa hai qubit, đường nét đứt là tương quan không rối (ví dụ GHZ).
 
 `POST /simulate` với `{"qiskit_code": "..."}` trả về, ngoài statevector và xác suất:
 
